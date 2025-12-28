@@ -17,7 +17,7 @@
       "direction": "out",
       "name": "tableBinding",
       "tableName": "Bills",
-      "connection": "AzureWebJobsStorage"
+      "connection": "DataStore"
     }
   ]
 }
