@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise GST Bill Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; padding: 0; }
+            .bill-canvas { border: none; box-shadow: none; width: 100%; margin: 0; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen p-4 md:p-8 font-sans">
+
+    <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
+        
+        <div class="lg:col-span-1 no-print bg-white p-6 rounded-xl shadow-sm h-fit">
+            <h2 class="text-xl font-bold mb-4 text-blue-800">Bill Manager</h2>
+            <button onclick="newBill()" class="w-full mb-3 bg-blue-600 text-white py-2 rounded-lg font-bold hover:bg-blue-700">+ New Bill</button>
+            <button onclick="saveToCloud()" class="w-full mb-3 border border-blue-600 text-blue-600 py-2 rounded-lg hover:bg-blue-50">Save to Azure</button>
+            <button onclick="window.print()" class="w-full bg-gray-800 text-white py-2 rounded-lg hover:bg-black">Print PDF</button>
+            
+            <hr class="my-6">
+            <h3 class="font-bold text-gray-600 mb-2">Recent Bills</h3>
+            <div id="billList" class="space-y-2 text-sm overflow-y-auto max-h-60">
+                </div>
+        </div>
+
+        <div class="lg:col-span-3 bg-white shadow-2xl rounded-sm p-10 bill-canvas" id="printableArea">
+            <div class="flex justify-between items-start border-b-4 border-blue-600 pb-6 mb-8">
+                <div>
+                    <input type="text" id="compName" placeholder="Your Company Name" class="text-3xl font-black uppercase outline-none block w-full">
+                    <textarea id="compAddr" placeholder="Company Address & Contact" class="text-sm text-gray-600 w-full mt-2 outline-none resize-none" rows="3"></textarea>
+                    <div class="mt-2 text-sm"><strong>GSTIN:</strong> <input type="text" id="compGST" placeholder="24AAAAA0000A1Z5" class="outline-none"></div>
+                </div>
+                <div class="text-right">
+                    <h1 class="text-4xl font-light text-gray-400 uppercase tracking-widest">Invoice</h1>
+                    <div class="mt-4 space-y-1">
+                        <p class="text-sm text-gray-500">Invoice #: <input type="text" id="invNo" class="font-bold outline-none text-right" value="INV-101"></p>
+                        <p class="text-sm text-gray-500">Date: <input type="date" id="invDate" class="outline-none text-right"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-10 mb-10">
+                <div>
+                    <h4 class="bg-gray-100 px-3 py-1 text-xs font-bold uppercase mb-2">Bill To:</h4>
+                    <input type="text" id="clientName" placeholder="Client Name" class="font-bold w-full outline-none mb-1">
+                    <textarea id="clientAddr" placeholder="Client Address" class="text-sm w-full outline-none resize-none" rows="2"></textarea>
+                    <p class="text-sm">GSTIN: <input type="text" id="clientGST" class="outline-none font-medium"></p>
+                </div>
+                <div>
+                    <h4 class="bg-gray-100 px-3 py-1 text-xs font-bold uppercase mb-2">Place of Supply:</h4>
+                    <input type="text" id="pos" placeholder="State Name (e.g. Gujarat)" class="w-full outline-none font-medium text-sm">
+                </div>
+            </div>
+
+            <table class="w-full mb-8 text-left border-collapse">
+                <thead>
+                    <tr class="border-b-2 border-gray-800 text-xs uppercase font-bold">
+                        <th class="py-3 px-2">Description</th>
+                        <th class="py-3 px-2 w-20 text-center">HSN</th>
+                        <th class="py-3 px-2 w-16 text-center">Qty</th>
+                        <th class="py-3 px-2 w-24 text-right">Rate</th>
+                        <th class="py-3 px-2 w-16 text-center">GST%</th>
+                        <th class="py-3 px-2 w-32 text-right">Amount</th>
+                        <th class="no-print"></th>
+                    </tr>
+                </thead>
+                <tbody id="itemRows">
+                    </tbody>
+            </table>
+            <button onclick="addItem()" class="no-print text-blue-600 font-bold text-sm">+ Add Line Item</button>
+
+            <div class="flex justify-end mt-10">
+                <div class="w-80 space-y-2 border-t-2 border-gray-100 pt-4">
+                    <div class="flex justify-between text-sm"><span>Taxable Value:</span> <span id="subTotal">₹0.00</span></div>
+                    <div class="flex justify-between text-sm text-gray-600"><span>CGST:</span> <span id="cgstTotal">₹0.00</span></div>
+                    <div class="flex justify-between text-sm text-gray-600"><span>SGST:</span> <span id="sgstTotal">₹0.00</span></div>
+                    <div class="flex justify-between text-xl font-black border-t-2 border-gray-800 pt-2">
+                        <span>Total:</span> <span id="grandTotal">₹0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('invDate').valueAsDate = new Date();
+        let items = [{ id: Date.now(), desc: '', hsn: '', qty: 1, rate: 0, gst: 18 }];
+
+        function render() {
+            const container = document.getElementById('itemRows');
+            container.innerHTML = items.map((item, idx) => `
+                <tr class="border-b text-sm">
+                    <td class="py-3 border-x px-2"><input oninput="update(${idx}, 'desc', this.value)" value="${item.desc}" class="w-full outline-none"></td>
+                    <td class="py-3 border-x px-2"><input oninput="update(${idx}, 'hsn', this.value)" value="${item.hsn}" class="w-full text-center outline-none"></td>
+                    <td class="py-3 border-x px-2"><input type="number" oninput="update(${idx}, 'qty', this.value)" value="${item.qty}" class="w-full text-center outline-none"></td>
+                    <td class="py-3 border-x px-2"><input type="number" oninput="update(${idx}, 'rate', this.value)" value="${item.rate}" class="w-full text-right outline-none"></td>
+                    <td class="py-3 border-x px-2">
+                        <select onchange="update(${idx}, 'gst', this.value)" class="w-full outline-none">
+                            <option value="5" ${item.gst==5?'selected':''}>5%</option>
+                            <option value="12" ${item.gst==12?'selected':''}>12%</option>
+                            <option value="18" ${item.gst==18?'selected':''}>18%</option>
+                            <option value="28" ${item.gst==28?'selected':''}>28%</option>
+                        </select>
+                    </td>
+                    <td class="py-3 border-x px-2 text-right font-bold">₹${((item.qty * item.rate) * (1 + item.gst/100)).toFixed(2)}</td>
+                    <td class="no-print px-2"><button onclick="removeItem(${idx})" class="text-red-400">×</button></td>
+                </tr>
+            `).join('');
+            calculate();
+        }
+
+        function update(idx, field, val) {
+            items[idx][field] = val;
+            render();
+        }
+
+        function addItem() { items.push({ id: Date.now(), desc: '', hsn: '', qty: 1, rate: 0, gst: 18 }); render(); }
+        function removeItem(idx) { items.splice(idx, 1); render(); }
+
+        function calculate() {
+            let sub = 0, tax = 0;
+            items.forEach(i => {
+                let amt = i.qty * i.rate;
+                sub += amt;
+                tax += amt * (i.gst / 100);
+            });
+            document.getElementById('subTotal').innerText = '₹' + sub.toFixed(2);
+            document.getElementById('cgstTotal').innerText = '₹' + (tax/2).toFixed(2);
+            document.getElementById('sgstTotal').innerText = '₹' + (tax/2).toFixed(2);
+            document.getElementById('grandTotal').innerText = '₹' + (sub + tax).toFixed(2);
+        }
+
+        async function saveToCloud() {
+    const saveBtn = event.target;
+    saveBtn.innerText = "Saving...";
+    saveBtn.disabled = true;
+
+    const billData = {
+        rowKey: document.getElementById('invNo').value,
+        client: document.getElementById('clientName').value,
+        total: document.getElementById('grandTotal').innerText,
+        date: document.getElementById('invDate').value,
+        items: JSON.stringify(items)
+    };
+
+    try {
+        const response = await fetch('/api/SaveBill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(billData)
+        });
+
+        if (response.ok) {
+            alert("Success! Bill stored in Azure Table Storage.");
+            addToRecentList(billData);
+        } else {
+            alert("Error saving to Azure.");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Connection failed.");
+    } finally {
+        saveBtn.innerText = "Save to Azure";
+        saveBtn.disabled = false;
+    }
+}
+
+// Utility to show local history
+function addToRecentList(bill) {
+    const list = document.getElementById('billList');
+    const entry = document.createElement('div');
+    entry.className = "p-2 border-b hover:bg-gray-50 cursor-pointer";
+    entry.innerHTML = `<strong>${bill.rowKey}</strong><br><span class="text-xs">${bill.client} - ${bill.total}</span>`;
+    list.prepend(entry);
+}
+
+        render();
+    </script>
+</body>
+</html>
