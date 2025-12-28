@@ -1,0 +1,7 @@
+{
+  "name": "gst-api",
+  "version": "1.0.0",
+  "dependencies": {
+    "@azure/functions": "^3.0.0"
+  }
+}
